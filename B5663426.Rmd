@@ -1,0 +1,1173 @@
+---
+title: "Business Statistics Assessment IB94X0 2024-2025 #2"
+author: "B5663426"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    number_sections: true
+    toc_float:
+      collapsed: true
+editor_options: 
+  chunk_output_type: console
+---
+
+# Acknowledgement
+
+---
+
+This is to certify that the work I am submitting is my own. All external references and sources are clearly acknowledged and identified within the contents. I am aware of the University of Warwick regulation concerning plagiarism and collusion. 
+
+No substantial part(s) of the work  submitted  here has also been submitted by  me  in other assessments for accredited courses of study, and I acknowledge that if this has been done an appropriate reduction in the mark I might otherwise have received will be made.
+
+AI was used partly in the preparation of this work. It was used in the development of the code: It was used to provide syntax or attributes of functions (to beautify) or approaches to elements of the challenges which were then interpreted by me and modified to be applicable to this data/report.
+
+---
+```{r setup, message=FALSE, warning=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(tidyr)
+library(dplyr)
+library(knitr)
+library(car) 
+library(kableExtra)
+options(width=100)
+
+
+```
+
+# Question 1 - Effect of various factors on Cardio Vascular Disease (CVD)
+
+
+This report fulfills the requests to analyse the factors which affect the prevalence of CVD - Cardio Vascular Disease in England across different local regions. The factors in the dataset include - Overweight, people living in Poverty, people who smoke and the wellbeing of the people and the total population of each region. The following steps are covered to come to a conclusion.
+
+1. Data Loading
+2. Initial Data Checks and Data Understanding
+3. Data Exploration
+4. Correlation Analysis
+5. Simple Linear Models
+6. Multiple Linear Regression
+7. Comparison of Models
+8. Conclusion
+
+---
+
+## Load the Data
+
+```{r, message=FALSE, warning=FALSE}
+
+raw_cvd.data <- read_csv("Cardio_Vascular_Disease.csv")
+
+#Loaded the dataset containing the Cardio Vascular Data.
+
+```
+
+## Initial Data checks and data understanding
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#The data captures the following factors mentioned across various local authority regions in the UK.
+
+data_dictionary_cvd <- data.frame(
+  Variable = c("area_name", "area_code", "Population", "Poverty", "CVD", "overweight", "smokers", "wellbeing"),
+  Description = c(
+    "Name of the area where the data is captured",
+    "Postcode of the area where the data is captured",
+    "Total population of the specific area (absolute value)",
+    "Proportion of people below the poverty threshold, relative to the population of the area",
+    "Proportion of people with cardiovascular disease (CVD), relative to the population of the area",
+    "Proportion of people who are overweight, relative to the population of the area",
+    "Proportion of smokers, relative to the population of the area",
+    "Average wellbeing of the people in that area"
+  )
+)
+
+data_dictionary_cvd %>%
+  kable("html", col.names = c("Variable", "Description"), align = "l") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover",  "responsive"),
+    full_width = FALSE,
+    position = "left") %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, border_left = TRUE) %>%  
+  column_spec(2, border_left = TRUE,border_right = TRUE) %>%               
+  row_spec(0, bold = TRUE, background = "#D3D3D3") %>%
+  kable_classic(full_width = FALSE, html_font = "Arial")
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+summary(raw_cvd.data)
+#The summary shows us that we have two character columns of area_name and area_code. Rest are numerical values. There are NA values in multiple columns that we will address later in this section.
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+# We can observe that the columns with numeric values don't have consistent formats. (decimals) In order to be sure, we also confirm the datatypes for each column and make the numeric formats consistent overall.
+
+str(raw_cvd.data)
+
+
+raw_cvd.data <- raw_cvd.data %>%
+  mutate(
+    area_code = as.character(area_code),
+    area_name = as.character(area_name),
+    Population = round(as.numeric(Population), 1),
+    Poverty = round(as.numeric(Poverty), 1),
+    CVD = round(as.numeric(CVD), 1),
+    overweight = round(as.numeric(overweight), 1),
+    smokers = round(as.numeric(smokers), 1),
+    wellbeing = round(as.numeric(wellbeing), 1)
+  )
+
+
+str(raw_cvd.data)
+
+#Now, the formats are consistent and we have also confirmed the datatypes for the columns.
+
+```
+
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#Since the area_name and area_code are character values and each row represents one city as mentioned in the brief, we confirm if there are duplicate values or not.
+
+cat("Unique values in area_name:", length(unique(raw_cvd.data$area_name, raw_cvd.data$area_name)), "\n")
+cat("Unique values in area_code:", length(unique(raw_cvd.data$area_code, raw_cvd.data$area_code)), "\n")
+
+#Comparing the distinct count of both columns and total rows, we confirm that there are no duplicate or null values in these two columns.
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#As observed earlier, there are a significant null values in the numeric columns that need to be addressed.
+
+nullvalues_raw_cvd.data <- raw_cvd.data %>%
+  summarise(across(everything(), ~ sum(is.na(.)) / n() * 100)) %>%
+  pivot_longer(cols = everything(), names_to = "Variable", values_to = "Null_Percentage") %>%
+  arrange(desc(Null_Percentage)) %>%
+  mutate(Null_Percentage = round(Null_Percentage, 2))
+
+nullvalues_raw_cvd.data
+
+raw_cvd.data <- raw_cvd.data %>%
+  drop_na()
+
+#One can see that the null values in columns Population, Poverty, CVD, overweight are quite high (~20% of the data). Since it is a significant value, we can remove these values as this data is related to healthcare and we cannot fill in or neglect null values.When the amount of missing data exceeds 10%, the results of subsequent statistical analyses may be biased (Newman, 2014, cited in ScienceDirect, 2023)
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+summary(raw_cvd.data)
+
+#Confirmed if any NA values still remain. The numeric values are also kept relative and not absolute since population for each region is different and population varies across regions. Hence converting them into absolute values can result in unbalanced data.
+
+```
+
+
+
+## Data Exploration
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#In order to undersatnd the distribution of data, in this part we will plot density and box plots for these columns to understand the data further and avoid any unbalanced data.
+
+density_plot_Population <- ggplot(raw_cvd.data) +
+  geom_density(aes(x = Population), fill = "#A8DADC", alpha = 0.6) +
+  geom_vline(aes(xintercept = mean(Population, na.rm = TRUE)), colour = "#A8DADC", linetype = "dashed", size = 1) +
+  labs(title = "Fig 1. Density Plot for Population", x = "Population", y = "Density") +
+  theme_minimal()
+
+density_plot_Poverty <- ggplot(raw_cvd.data) +
+  geom_density(aes(x = Poverty), fill = "#457B9D", alpha = 0.6) +
+  geom_vline(aes(xintercept = mean(Poverty, na.rm = TRUE)), colour = "#457B9D", linetype = "dashed", size = 1) +
+  labs(title = "Fig 2. Density Plot for Poverty", x = "Poverty", y = "Density") +
+  theme_minimal()
+
+density_plot_CVD <- ggplot(raw_cvd.data) +
+  geom_density(aes(x = CVD), fill = "#E63946", alpha = 0.6) +
+  geom_vline(aes(xintercept = mean(CVD, na.rm = TRUE)), colour = "#E63946", linetype = "dashed", size = 1) +
+  labs(title = "Fig 3. Density Plot for CVD", x = "CVD", y = "Density") +
+  theme_minimal()
+
+density_plot_Overweight <- ggplot(raw_cvd.data) +
+  geom_density(aes(x = overweight), fill = "#1D3557", alpha = 0.6) +
+  geom_vline(aes(xintercept = mean(overweight, na.rm = TRUE)), colour = "#1D3557", linetype = "dashed", size = 1) +
+  labs(title = "Fig 4. Density Plot for Overweight", x = "Overweight", y = "Density") +
+  theme_minimal()
+
+density_plot_Smokers <- ggplot(raw_cvd.data) +
+  geom_density(aes(x = smokers), fill = "#6D6875", alpha = 0.6) +
+  geom_vline(aes(xintercept = mean(smokers, na.rm = TRUE)), colour = "#6D6875", linetype = "dashed", size = 1) +
+  labs(title = "Fig 5. Density Plot for Smokers", x = "Smokers", y = "Density") +
+  theme_minimal()
+
+density_plot_Wellbeing <- ggplot(raw_cvd.data) +
+  geom_density(aes(x = wellbeing), fill = "#B5838D", alpha = 0.6) +
+  geom_vline(aes(xintercept = mean(wellbeing, na.rm = TRUE)), colour = "#B5838D", linetype = "dashed", size = 1) +
+  labs(title = "Fig 6. Density Plot for Wellbeing", x = "Wellbeing", y = "Density") +
+  theme_minimal()
+
+
+grid.arrange(
+  density_plot_Population, density_plot_Poverty, 
+  density_plot_CVD, density_plot_Overweight, 
+  density_plot_Smokers, density_plot_Wellbeing,
+  ncol = 2, nrow = 3
+)
+
+#Based on the graphs plotted, the density or distribution of values for CVD, Overweight, Smokers and Well being seems normally and distributed in a balanced way. However for Population and Poverty, the data seems to be positively skewed with a tail at the end. As majority of values are below the mean value, we confirm it is positively skewed.
+
+#Example of positive/negative/balanced data (Kaur et al., 2018)
+
+```
+
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#Using log transformation to balance these two columns.
+
+raw_cvd.data$Population <- log(raw_cvd.data$Population)
+raw_cvd.data$Poverty <- log(raw_cvd.data$Poverty)
+
+plot_population_log <- ggplot(raw_cvd.data, aes(x = Population)) +
+  geom_density(fill = "#A8DADC", alpha = 0.7, colour = "black") +
+  theme_minimal() +
+  labs(title = "Fig 7.Density Plot:Log-Transformed Population",
+       x = "Log-Transformed Population",
+       y = "Density")
+
+plot_poverty_log <- ggplot(raw_cvd.data, aes(x = Poverty)) +
+  geom_density(fill = "#457B9D", alpha = 0.7, colour = "black") +
+  theme_minimal() +
+  labs(title = "Fig 8.Density Plot:Log-Transformed Poverty",
+       x = "Log-Transformed Poverty",
+       y = "Density")
+
+library(gridExtra)
+grid.arrange(plot_population_log, plot_poverty_log, ncol = 2, nrow = 1)
+
+#Now, we have transformed the data to have a balance spread.
+
+```
+
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+box_plot_Poverty <- ggplot(raw_cvd.data) +
+  geom_boxplot(aes(y = Poverty, fill = "#457B9D")) +
+  labs(title = "Fig 9. Box Plot for Poverty", x = "", y = "Poverty") +
+  theme_minimal() +
+  scale_fill_manual(values = "#457B9D") +
+  theme(legend.position = "none")
+
+box_plot_CVD <- ggplot(raw_cvd.data) +
+  geom_boxplot(aes(y = CVD, fill = "#E63946")) +
+  labs(title = "Fig 10. Box Plot for CVD", x = "", y = "CVD") +
+  theme_minimal() +
+  scale_fill_manual(values = "#E63946") +
+  theme(legend.position = "none")
+
+box_plot_Overweight <- ggplot(raw_cvd.data) +
+  geom_boxplot(aes(y = overweight, fill = "#1D3557")) +
+  labs(title = "Fig 11. Box Plot for Overweight", x = "", y = "Overweight") +
+  theme_minimal() +
+  scale_fill_manual(values = "#1D3557") +
+  theme(legend.position = "none")
+
+box_plot_Smokers <- ggplot(raw_cvd.data) +
+  geom_boxplot(aes(y = smokers, fill = "#6D6875")) +
+  labs(title = "Fig 12. Box Plot for Smokers", x = "", y = "Smokers") +
+  theme_minimal() +
+  scale_fill_manual(values = "#6D6875") +
+  theme(legend.position = "none")
+
+box_plot_Wellbeing <- ggplot(raw_cvd.data) +
+  geom_boxplot(aes(y = wellbeing, fill = "#B5838D")) +
+  labs(title = "Fig 13. Box Plot for Wellbeing", x = "", y = "Wellbeing") +
+  theme_minimal() +
+  scale_fill_manual(values = "#B5838D") +
+  theme(legend.position = "none")
+
+grid.arrange(box_plot_Poverty, box_plot_CVD, box_plot_Overweight, 
+             box_plot_Smokers, box_plot_Wellbeing, ncol = 2, nrow = 3 )  
+
+
+#We can find a few outliers in Poverty, Smokers, Wellbeing but we can neglect them since the count is few and there can be a few high values considering it is a real life dataset. We will not dive deeper into population since the column will not be used as a factor in our analysis.
+
+```
+
+
+
+## Correlation Analysis
+
+```{r, message=FALSE, warning=FALSE}
+
+correlation_raw_cvd_data <- cor(raw_cvd.data %>% 
+                                  select(CVD, Poverty, overweight, smokers, wellbeing), 
+                                use = "complete.obs", 
+                                method = "pearson")
+
+print("Correlation Matrix (correlation_raw_cvd_data):")
+print(correlation_raw_cvd_data)
+
+
+```
+
+The correlation matrix helps us understand the relativity between different factors that can affect the dependent variable. In the correlation matrix, we can observe the following:
+
+1) CVD and Poverty: The -0.22 value suggests a weak negative correlation between Poverty and CVD, suggesting that with increase in poverty levels the risk of having CVD slightly decreases. This relation may or may-not suggest their actual impact on each other. There can be external factors which can affect them and it can be worth studying further.
+
+2) CVD and Overweight: The 0.31 value suggests a moderate positive correlation between being Overweight and CVD, suggesting that with increase in Overweight the risk of having CVD increases. This is true and can be confirmed since with increase in weight, the risk of having health diseases also increases.
+
+3) CVD and Smokers: The 0.177 value suggests a weak positive correlation between Smokers and CVD, suggesting that with increase in smoking levels increases the risk of having CVD slightly increases. This can be confirmed since with increase in smoking the lungs and heart gets affected leading to increase in risk of CVD or health issues.
+
+4) CVD and Wellbeing: The 0.24 value suggests a weak positive correlation between Wellbeing and CVD, suggesting that with increase in Wellbeing levels the risk of having CVD slightly increases. This is not a straight or common find as increase in well being level results in a better mental/physical state hence reducing load on the body. But there can be a possibility or other factors which contribute to this correlation as the relation is not very strong.
+
+5) Smokers and Poverty: The 0.37 value suggests a moderate positive relation between Smokers and Poverty, suggesting that increase in Poverty level can result in increase in Smokers level or vice versa. People generally in higher poverty levels are exposed to external objects for satisfaction hence showing the relation. 
+
+6) Overweight and Smokers:The 0.40 value suggests a moderate positive relation between being Overweight and Smokers, suggesting that increase in Overweight level can result in increase in Smokers level or vice versa. Smoking or being overweight can be interlinked to each other as it can upset the working of the human organs resulting in various health issues like being overweight.
+
+7) Overweight and Wellbeing:The 0.49 value suggests a moderate positive relation between being Overweight and Wellbeing, suggesting that increase in Overweight level can result in increase in Wellbeing level or vice versa. People generally who are overweight, often feel uncomfortable or less confident because of their body resulting in this relationship.
+
+Although the correlation matrix shows us the relation between various factors, it doesn't neccessarily show the actual relationships when seen in real life context and they can be just casusally related. Hence based on these observations, we will study them further in our models to find the most impacting factors.
+
+
+## Simple Linear Models
+
+
+```{r, message=FALSE, warning=FALSE}
+
+# We create simple linear models for each factor and see how it impacts CVD
+
+lm_Poverty_raw_cvd_data <- lm(CVD ~ Poverty, data = raw_cvd.data)
+summary(lm_Poverty_raw_cvd_data)
+
+#The model predicts that for 1 unit increase in poverty, the chance of having CVD decreases by -7 units. With a very small value of P, we can confirm this relation is statistically significant. With a very small score of R square, the model fails to properly explain the variance in CVD.
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_Overweight_raw_cvd_data <- lm(CVD ~ overweight, data = raw_cvd.data)
+summary(lm_Overweight_raw_cvd_data)
+
+#The model predicts that for 1 unit increase in overweight, the chance of having CVD increases by 0.12 units. With a very small value of P, we can confirm this relation is statistically significant. With a 0.09 (~10%) small score of R square, the model fails to properly explain the variance in CVD.
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_Smokers_raw_cvd_data <- lm(CVD ~ smokers, data = raw_cvd.data)
+summary(lm_Smokers_raw_cvd_data)
+
+#The model predicts that for 1 unit increase in smokers, the chance of having CVD increases by 0.10 units. With a very small value of P, we can confirm this relation is statistically significant. With a 0.02 (~2%)  very small score of R square, the model fails to properly explain the variance in CVD.
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_Wellbeing_raw_cvd_data <- lm(CVD ~ wellbeing, data = raw_cvd.data)
+summary(lm_Wellbeing_raw_cvd_data)
+
+#The model predicts that for 1 unit increase in wellbeing, the chance of having CVD increases by 2.22 units. With a very small value of P, we can confirm this relation is statistically significant. With a 0.05 (~5%)  very small score of R square, the model fails to properly explain the variance in CVD. This explains a counter intuitive relation as being more well should ideally decrease the chance of CVD. But there can be other factors which can affect the relation.
+
+```
+
+
+Although the relations are statistically significant, they don't explain the variance or the relation to CVD very strongly. Hence we will consider more models to compare our outcomes.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+scatterplot_Poverty_raw_cvd_data <- ggplot(raw_cvd.data, aes(x = Poverty, y = CVD)) +
+  geom_point(colour = "#457B9D", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#457B9D", fill = "#457B9D", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 14. Impact of Poverty on CVD",
+       x = "Poverty (%)",
+       y = "CVD Rate")
+
+scatterplot_Overweight_raw_cvd_data <- ggplot(raw_cvd.data, aes(x = overweight, y = CVD)) +
+  geom_point(colour = "#1D3557", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#1D3557", fill = "#1D3557", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 15. Impact of overweight on CVD",
+       x = "Overweight (%)",
+       y = "CVD Rate")
+
+scatterplot_Smokers_raw_cvd_data <- ggplot(raw_cvd.data, aes(x = smokers, y = CVD)) +
+  geom_point(colour = "#6D6875", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#6D6875", fill = "#6D6875", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 16. Impact of being a smoker on CVD",
+       x = "Smokers (%)",
+       y = "CVD Rate")
+
+scatterplot_Wellbeing_raw_cvd_data <- ggplot(raw_cvd.data, aes(x = wellbeing, y = CVD)) +
+  geom_point(colour = "#B5838D", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#B5838D", fill = "#B5838D", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 17. Impact of wellbeing on CVD",
+       x = "Wellbeing Index",
+       y = "CVD Rate")
+
+
+grid.arrange(scatterplot_Poverty_raw_cvd_data, 
+             scatterplot_Overweight_raw_cvd_data, 
+             scatterplot_Smokers_raw_cvd_data, 
+             scatterplot_Wellbeing_raw_cvd_data, 
+             ncol = 2)
+
+
+#As observed in the NHST approach for all linear models, we observe the same trend in the above graphs. With no significant results, we continue with our approach to find the best factors which affect the CVD highest.
+
+#From the above models, the model with a signifcant P value and highest R square values, CVD~overweight seems the best fit.
+
+
+```
+
+
+## Multiple Linear Regression
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#We will now consider Multiple Regression to study which factors affect CVD when combined.
+
+mm_all_raw_cvd._data <- lm(CVD ~ Poverty + overweight + smokers + wellbeing , data = raw_cvd.data)
+
+summary(mm_all_raw_cvd._data)
+
+
+```
+
+With a higher R square values, this model at first glance seems a better fit than the previous simple linear models. The relation of the factors with CVD has also changed from previous.
+
+1) Poverty: With a smaller p-value (1.58e-06), the estimate value has also changed significantly.The model predicts that for 1 unit increase in poverty, the chance of having CVD decreases by -3.46 units
+
+2) Overweight: With a smaller p-value (2.27e-07), the estimate value has also changed (decreased). The model now predicts that for 1 unit increase in overweight, the chance of having CVD increases by 0.11 units instead of 0.12 earlier.
+
+3) Smokers: With a smaller p-value (0.000550), the estimate value has also changed (increased). The model now predicts that for 1 unit increase in Smokers, the chance of having CVD increases by 0.11 units instead of 0.10 earlier.
+
+4) Wellbeing: With a very similar p-value (0.000144), the estimate value has changed significantly (decreased). The model now predicts that for 1 unit increase in Smokers, the chance of having CVD increases by 1.86 units instead of 2.22 earlier indicating a decrease in it's importance in the model.
+
+Based on our correlation matrix where we found other related factors, we will compare them in our model.
+
+Since we know, smoking is generally high in high poverty regions as explained early, we can further explore this relation.
+
+```{r, message=FALSE, warning=FALSE}
+
+model2 <- lm(CVD ~ smokers * Poverty, data = raw_cvd.data)
+summary(model2)
+
+#With high p values, we can discard this model.
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+# Similarly, we will experiment other combination of factors. Wellbeing of a mind or body is affected by being overweight and hence we want to analyse this relation.
+
+
+model3 <- lm(CVD ~ wellbeing * overweight , data = raw_cvd.data)
+summary(model3)
+
+#Although the wellbeing factors keeps it's significance, the rest factors and interacting factors have very little significance (p-values close to 0.05)
+
+```
+
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+model4 <- lm(CVD ~  overweight*smokers, data = raw_cvd.data)
+summary(model4)
+
+#We can find a similar trend, where overweight seems significant but not the rest of factors. Hence we will discard this as well.
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+model5 <- lm(CVD ~ wellbeing + overweight , data = raw_cvd.data)
+summary(model5)
+
+#This model, shows improvement in their overall significance based on p-values where both factors contribute significantly. Both maintain their positive relation with CVD with increase in 2.36units of CVD for 1 unit increase in wellbeing. (earlier it was 2.22 in the simple linear model and 1.89 when considered with all factors) However the factor for overweight has remained constant showing 0.12 unit increase in CVD when 1 unit of overweight is considered. Overall the model explains 16% of variance, hence lower than the model where all factors are considered.
+
+```
+
+
+## Comparison of Models
+
+```{r, message=FALSE, warning=FALSE}
+
+
+raw_cvd.data$Predicted_CVD_Model5 <- predict(model5, newdata = raw_cvd.data)
+raw_cvd.data$Predicted_CVD_Model6 <- predict(mm_all_raw_cvd._data, newdata = raw_cvd.data)
+
+anova(model5, mm_all_raw_cvd._data)
+
+
+
+```
+
+Based on the ANOVA results, the Model 2 - consisting of all factors provides better results and fits the data well compared to the other model.The lower p-value (1.945e-06) suggests the model with all factors considered is significant and all factors are significant.
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#Let's also visualize them to compare them.
+
+
+plot_model5 <- ggplot(raw_cvd.data, aes(x = CVD, y = Predicted_CVD_Model5)) +
+  geom_point(alpha = 0.7, colour = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
+  labs(
+    title = "Fig 18. Model 2: Observed vs Predicted",
+    x = "Observed CVD (%)",
+    y = "Predicted CVD (%)"
+  ) +
+  theme_minimal()
+
+plot_model6 <- ggplot(raw_cvd.data, aes(x = CVD, y = Predicted_CVD_Model6)) +
+  geom_point(alpha = 0.7, colour = "blue") +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", colour = "red") +
+  labs(
+    title = "Fig 19. Model 6: Observed vs Predicted",
+    x = "Observed CVD (%)",
+    y = "Predicted CVD (%)"
+  ) +
+  theme_minimal()
+
+grid.arrange(
+  plot_model5, plot_model6,
+  ncol = 2,
+  top = "Comparison of Observed vs Predicted CVD for All Models"
+)
+
+#As seen in the graphs, the second model (CVD ~ Poverty + overweight + smokers + wellbeing) fits better with the data points closer to the fitted regression line.
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+vif_values <- vif(mm_all_raw_cvd._data)
+cat("Variance Inflation Factor (VIF) for CVD Predictors:")
+print(vif_values)
+```
+
+Based on the values obtained in Variance Inflation Factor, we can confirm absence of multicollinearity in our model since all values are well below 5 (which is generally considered the threshold) suggesting all factors are independently significant and don't interfere with each other when considered together.
+
+```{r}
+confint(mm_all_raw_cvd._data)
+
+```
+
+The confidence interval gives us an idea of how the factors are significant and how each factor contributes to the CVD - prediction.
+
+1) Poverty: When other factors are controlled, the Poverty factor affects CVD between -14.2 and -5.93 values indicating a significant negative relation.
+
+2) Overweight: When other factors are controlled, the overweight factor affects CVD between 0.07 and 0.15 values indicating a significant positive relation.
+
+3) Smokers: When other factors are controlled, the smoker factor affects CVD between 0.05 and 0.18 values indicating a significant positive relation.
+
+4) Wellbeing: When other factors are controlled, the wellbeing factor affects CVD between 0.93 and 2.84 values indicating a significant positive relation.
+
+None of the intervals cross zero or have zero in them suggesting the strong factors and stregnth of the model.
+
+## Conclusion
+
+As seen in the graphs, the second model (CVD ~ Poverty + overweight + smokers + wellbeing) fits better with the data points closer to the fitted regression line. Supported by VIF, the absence of multicollinearity and by confidence intervals, we conclude the model (CVD ~ Poverty + overweight + smokers + wellbeing) to be the best fit.
+
+
+# Question 1 - Effect of Poverty on Cardio Vascular Disease (CVD)
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#Since we have already carried out steps of Data Loading, Data Understanding, Data Transformations, we will directly skip to the modelling of Poverty on CVD.
+
+
+lm_Poverty_raw_cvd_data <- lm(CVD ~ Poverty, data = raw_cvd.data)
+summary(lm_Poverty_raw_cvd_data)
+
+```
+
+The model predicts that for 1 unit increase in poverty, the chance of having CVD decreases by -7 units. With a very small value of P, we can confirm this relation is statistically significant. With a very small score of R square, the model fails to properly explain the variance in CVD.
+
+The possible explanation for the chance of CVD to decrease with increase in poverty is counter intuitive since we generally have the though process that with increase in poverty, the health detoriates and hence the chance of CVD increases.
+
+Possible scenarios of this to occur can be:
+
+1) Incomplete Data: There can be a possibility that the people who are actually very poor and have exposure to very bad healthcare services and poor lifestyle may have actually died and hence were not part of the data. Or the data captured the reality in an unbalanced way.
+
+2) Higher Physical Activity: With lower poverty levels, these people have to work extra hard to get food on plate resulting in increase in daily activity hence decreasing their chances of CVD.
+
+3) Less External Factors: With poverty, people can be less stressed and have lesser things to worry as opposed to a normal human being in this cut throught world. Combined with other factors like having simple food or less packaged food can also contribute to lesser chances of CVD.
+
+
+```{r, message=FALSE, warning=FALSE}
+scatterplot_Poverty_raw_cvd_data <- ggplot(raw_cvd.data, aes(x = Poverty, y = CVD)) +
+  geom_point(colour = "#457B9D", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#457B9D", fill = "#457B9D", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 20. Impact of Poverty on CVD",
+       x = "Poverty (%)",
+       y = "CVD Rate")
+
+scatterplot_Poverty_raw_cvd_data
+
+#The visual further explains the decrease in chances of CVD with increase in poverty althought the relation is not very strong.
+
+```
+
+
+```{r}
+confint(lm_Poverty_raw_cvd_data)
+
+#The confidence interval as explained earlier, gives us an idea of how poverty is significant and how it affects chances of CVD. The Poverty factor affects CVD between -11.9 and -3.79 values indicating a significant negative relation. This interval suggests that with increase in 1 unit of Poverty, the CVD predicted value lies between -11.9 and -3.79 unit.
+
+
+```
+
+
+
+# Question 2 - Effect of various factors on Customer Satisfaction
+
+
+This report fulfills the requests to analyse the factors which affect the customers satisfaction across different stores. The factors in the dataset include - customer satisfaction scores, staff job satisfaction scores, average delivery times of large and custom items, whether the store is carrying a new range of products, and the socio-economic categorization of the stores (low, medium, and high SES). The following steps are covered to come to a conclusion.
+
+1. Data Loading
+2. Initial Data Checks and Data Understanding
+3. Data Exploration
+4. Correlation Analysis
+5. Simple Linear Models
+6. Multiple Linear Regression
+7. Comparison of Models
+8. Conclusion
+
+---
+
+## Data Loading
+
+```{r}
+
+raw_cs.data <- read_csv("cust_satisfaction.csv")
+
+#Loaded the dataset containing the Customer Satisfaction Data.
+```
+
+
+
+
+## Initial Data checks and data understanding
+
+
+```{r}
+
+#This data captures the following factors whicha are collected across stores to see how their customer satisfaction values fare against them:
+
+
+data_dictionary_cs <- data.frame(
+  Variable = c("SES_category", "customer.satisfaction", "staff.satisfaction", "delivery.time", "new_range"),
+  Description = c(
+    "Socio-economic status category of each store (low, medium, or high)",
+    "Average customer satisfaction score for each store",
+    "Average staff job satisfaction score for each store",
+    "Average delivery time of large and custom items for each store",
+    "Indicates whether the store is carrying a new range of products"
+  )
+)
+
+data_dictionary_cs %>%
+  kable("html", col.names = c("Variable", "Description"), align = "l") %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover",  "responsive"),
+    full_width = FALSE,
+    position = "left") %>%
+  column_spec(1, bold = TRUE, border_right = TRUE, border_left = TRUE) %>%  
+  column_spec(2, border_left = TRUE,border_right = TRUE) %>%               
+  row_spec(0, bold = TRUE, background = "#D3D3D3") %>%
+  kable_classic(full_width = FALSE, html_font = "Arial")
+
+```
+
+---
+
+```{r, message=FALSE, warning=FALSE}
+
+summary(raw_cs.data)
+
+#The summary shows us that we have one character column of SES_category. We also have one binary categorical column of new_range. Rest are numerical values. There are no NA values in the dataset. 
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+unique(raw_cs.data$SES_category)
+
+unique(raw_cs.data$new_range)
+
+
+raw_cs.data$SES_category <- as.factor(raw_cs.data$SES_category)
+raw_cs.data$new_range <- as.factor(raw_cs.data$new_range)
+
+#We check the unique values in both - SES_category and new_range. Since they are categorical and if we want to include them in our model, we need to mention that they are factors and not numerical values. Hence instead of converting them manually, with use of the factor function we convert them to factors.
+
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#We can observe that the columns with numeric values don’t have consistent formats. (decimals) In order to be sure, we also confirm the datatypes for each column and make the numeric formats consistent overall.
+
+
+head(raw_cs.data)
+
+#just to make sure, round decimal to one.
+
+raw_cs.data <- raw_cs.data %>%
+  mutate(
+    customer.satisfaction = round(as.numeric(customer.satisfaction), 1),
+    staff.satisfaction = round(as.numeric(staff.satisfaction), 1),
+    delivery.time = round(as.numeric(delivery.time), 1)
+  )
+  
+
+head(raw_cs.data)
+
+
+#first checking duplicate values before removing null as it can be possible reason
+cat("Unique values in SES_category:", length(unique(raw_cs.data$SES_category, raw_cs.data$SES_category)), "\n")
+cat("Unique values in new_range:", length(unique(raw_cs.data$new_range, raw_cs.data$new_range)), "\n")
+
+#so no duplicate values
+
+#Now, the formats are consistent and we have also confirmed the datatypes for the columns.
+```
+
+
+
+## Data Exploration
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#Since the SES_category and new_range are character values, we confirm if there are no different values as opposed to the general list of values for those columns.
+
+
+
+box_plot_CustomerSatisfaction <- ggplot(raw_cs.data, aes(y = customer.satisfaction)) +
+  geom_boxplot(fill = "#81B29A", alpha = 0.7) +
+  labs(title = "Fig 21. Box Plot: Customer Satisfaction", y = "Customer Satisfaction", x = "") +
+  theme_minimal()
+
+box_plot_StaffSatisfaction <- ggplot(raw_cs.data, aes(y = staff.satisfaction)) +
+  geom_boxplot(fill = "#3D405B", alpha = 0.7) +
+  labs(title = "Fig 22. Box Plot: Staff Satisfaction", y = "Staff Satisfaction", x = "") +
+  theme_minimal()
+
+box_plot_DeliveryTime <- ggplot(raw_cs.data, aes(y = delivery.time)) +
+  geom_boxplot(fill = "#E07A5F", alpha = 0.7) +
+  labs(title = "Fig 23. Box Plot: Delivery Time", y = "Delivery Time", x = "") +
+  theme_minimal()
+
+boxplot_NewRange <- ggplot(raw_cs.data, aes(x = new_range, y = customer.satisfaction, fill = new_range)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("#70a9a1", "#9ec1a3")) +
+  theme_minimal() +
+  labs(
+    title = "Fig 24. Spread of CS by New Range",
+    x = "New Range (FALSE or TRUE)",
+    y = "Customer Satisfaction"
+  ) +
+  theme(legend.position = "none")
+
+boxplot_SES_category <- ggplot(raw_cs.data, aes(x = SES_category, y = customer.satisfaction, fill = SES_category)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("#e75e11", "#9b4d47", "#6a8a6c")) +
+  theme_minimal() +
+  labs(
+    title = "Fig 25. Spread of CS by SES Category",
+    x = "SES Category",
+    y = "Customer Satisfaction"
+  ) +
+  theme(legend.position = "none")
+
+grid.arrange(
+  box_plot_CustomerSatisfaction,
+  box_plot_StaffSatisfaction,
+  box_plot_DeliveryTime,
+  boxplot_NewRange,
+  boxplot_SES_category,
+  ncol = 2,
+  nrow = 3,
+  top = "Spread of Data: Density and Box Plots"
+)
+
+#The data seems normally distributed without any major skewness. The box plots also show no major outliers and we can neglect them since the count is few and there can be a few high values considering it is a real life dataset.
+
+
+```
+
+
+## Correlation Analysis
+
+```{r, message=FALSE, warning=FALSE}
+
+correlation_raw_cs_data <- cor(raw_cs.data %>% 
+                                  select("customer.satisfaction", "staff.satisfaction", "delivery.time"), 
+                                use = "complete.obs", 
+                                method = "pearson")
+
+print("Correlation Matrix (correlation_raw_cs_data):")
+print(correlation_raw_cs_data)
+
+```
+
+The correlation matrix helps us understand the relativity between different factors that can affect the dependent variable. In the correlation matrix, we can observe the following:
+
+1) Customer Satisfaction and Staff Satisfaction: The 0.45 value suggests a moderate positive correlation between Customer Satisfaction and Staff Satisfaction, suggesting that with increase in job satisfaction levels increases the satisfaction level of customer also increases. This can be confirmed since the staff which are happy and content with their jobs can provide better serivces to their customers.
+
+2) Customer Satisfaction and Delivery Time: The -0.25 value suggests a weak negative correlation between Customer Satisfaction and Delivery Time, suggesting that with increase in delivery time the satisfaction level of customer decreases. This can be confirmed since the more time it takes for customers to get their product the discontent will increase.
+
+3) Staff Satisfaction and Delivery Time: The -0.06 value indicates a very weak negative correlation between staff satisfaction and delivery time suggesting that there is a very weak or insignificant relationship between these them. This aligns with our real life understanding that the staff satisfaction levels are very vaguely related to delivery time of products for customers.
+
+Although the correlation matrix shows us the relation between various factors, it doesn’t necessarily show the actual relationships when seen in real life context and they can be just casually related. Hence based on these observations, we will study them further in our models to find the most impacting factors.
+
+## Simple Linear Models
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+#We create simple linear models for each factor and see how it impacts customer satisfaction
+
+lm_StaffSatisfaction_raw_cs_data <- lm(customer.satisfaction ~ staff.satisfaction, data = raw_cs.data)
+summary(lm_StaffSatisfaction_raw_cs_data)
+
+
+#The model predicts that for 1 unit increase in Staff Satisfaction, the customer satisfaction increases by 0.74 units. With a very small value of P, we can confirm this relation is statistically significant. With a moderate score of R square, the model fails to completely explain the variance in customer satisfaction.
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_DeliveryTime_raw_cs_data <- lm(customer.satisfaction ~ delivery.time, data = raw_cs.data)
+summary(lm_DeliveryTime_raw_cs_data)
+
+#The model predicts that for 1 unit increase in Delivery Time, the customer satisfaction decreases by 0.02 units. With a very small value of P, we can confirm this relation is statistically significant. With a very small score of R square, the model fails to properly explain the variance in customer satisfaction.
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_new_range_raw_cs_data <- lm(customer.satisfaction ~ new_range, data = raw_cs.data)
+summary(lm_new_range_raw_cs_data)
+
+#The model predicts that for stores with new units, the customer satisfaction increases by 0.13 units. With a p-value of 0.38, we can confirm this relation is statistically not significant. With a very small score of R square, the model fails to properly explain the variance in customer satisfaction.
+
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_SES_category_raw_cs_data <- lm(customer.satisfaction ~ SES_category, data = raw_cs.data)
+summary(lm_SES_category_raw_cs_data)
+
+#The model predicts that when the SES_category is high and other factors are kept in control, the customer satisfaction increases by 6.55 units with a statistically significant relation. Similarly, model predicts that when the SES_category is medium and other factors are kept in control, the customer satisfaction increases by 1.49 units with a statistically significant relation. On the other hand, model predicts that when the SES_category is low and other factors are kept in control, the customer satisfaction decreases by -0.3 units with a statistically significant relation. With a decent score of R square, the model attempts to properly explain the variance in customer satisfaction.
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+scatterplot_StaffSatisfaction_raw_cs_data <- ggplot(raw_cs.data, aes(x = staff.satisfaction, y = customer.satisfaction)) +
+  geom_point(colour = "#3D405B", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#3D405B", fill = "#3D405B", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 26. Impact of Staff Satisfaction on CS",
+       x = "Staff Satisfaction",
+       y = "Customer Satisfaction")
+
+
+
+scatterplot_DeliveryTime_raw_cs_data <- ggplot(raw_cs.data, aes(x = delivery.time, y = customer.satisfaction)) +
+  geom_point(colour = "#E07A5F", alpha = 0.7) +
+  geom_smooth(method = "lm", colour = "#E07A5F", fill = "#E07A5F", alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Fig 27. Impact of Delivery Time on CS",
+       x = "Delivery Time",
+       y = "Customer Satisfaction")
+
+boxplot_new_range_raw_cs_data <- ggplot(raw_cs.data, aes(x = new_range, y = customer.satisfaction, fill = new_range)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("#70a9a1", "#9ec1a3")) +  # Updated colours for new_range
+  theme_minimal() +
+  labs(title = "Fig 28. Impact of New Range on CS",
+       x = "New Range (TRUE or FALSE)",
+       y = "Customer Satisfaction") +
+  theme(legend.position = "none")
+
+
+boxplot_SES_category_raw_cs_data <- ggplot(raw_cs.data, aes(x = SES_category, y = customer.satisfaction, fill = SES_category)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_manual(values = c("#e75e11", "#9b4d47", "#6a8a6c")) +  # Updated colours for ses_category
+  theme_minimal() +
+  labs(title = "Fig 29. Impact of SES Category on CS",
+       x = "SES Category",
+       y = "Customer Satisfaction") +
+  theme(legend.position = "none")
+
+
+
+grid.arrange(scatterplot_StaffSatisfaction_raw_cs_data, 
+             scatterplot_DeliveryTime_raw_cs_data,boxplot_new_range_raw_cs_data, boxplot_SES_category_raw_cs_data, 
+             ncol = 2,nrow=2,
+             top = "Regression Plots for Customer Satisfaction")
+
+
+#As observed in the NHST approach for all linear models, we observe the same trend in the above graphs. With no significant results, we continue with our approach to find the best factors which affect the customer satisfaction highest. From the above models, the model with a signifcant P value and highest R square values, Customer satisfaction ~ staff satisfaction seems the best fit.
+
+```
+
+
+## Multiple Linear Regression
+
+```{r, message=FALSE, warning=FALSE}
+
+#We will now consider Multiple Regression to study which factors affect customer satisfaction when combined.
+
+#This can be a possible interaction since customers are aware it can take time to deliver a new range product and hence we can see 
+
+
+
+lm_DeliveryTime_NewRange_raw_cs_data <- lm(customer.satisfaction ~ delivery.time * new_range, data = raw_cs.data)
+summary(lm_DeliveryTime_NewRange_raw_cs_data)
+
+#The model explains that when the range is true and other factors are controlled, the customer satisfaction increases by 0.23 units although the p-value is 0.76, suggesting the relation is not significant.
+#Similarly the interaction between delivery time and new range when true is also not significant suggested by a p-value of 0.86.
+#On the other hand, delivery time still remains an important factor as supported by very significant p-value of 0.002. The customer satisfaction decreases by 0.02 units whenever the delivery time increases by 1 unit.
+#With very low R square value (0.05), we can discard this model as it fails to explain the variance in the model. We can conclude from this model that delivery time remains a significant factor and new range not significant.
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+
+
+lm_all_factors_raw_cs_data <- lm(customer.satisfaction ~ staff.satisfaction + delivery.time + new_range + SES_category, data = raw_cs.data)
+
+
+summary(lm_all_factors_raw_cs_data)
+
+```
+
+The model predicts that for 1 unit increase in Staff Satisfaction, the customer satisfaction increases by 0.35 units. With a very small value of P, we can confirm this relation is statistically significant.
+
+The model predicts that for 1 unit increase in Delivery Time, the customer satisfaction decreases by 0.01 units. With a very small value of P, we can confirm this relation is statistically significant. With a very small score of R square, the model fails to properly explain the variance in customer satisfaction.
+
+The model predicts that for stores with new units, the customer satisfaction increases by 0.09 units. With a p-value of 0.39, we can confirm this relation is statistically not significant.
+
+The model predicts that when the SES_category is medium and other factors are kept in control, the customer satisfaction increases by 1.20 units with a statistically significant relation. On the other hand, model predicts that when the SES_category is low and other factors are kept in control, the customer satisfaction decreases by -0.24 units with a statistically minimal significant relation.
+With a very good R square value of 0.43, it suggests the model is not over fit and explains the variance in the data well.
+
+## Comparison of Models
+
+When we compare the above model (consisting of all factors) with standalone models, we can see a common trend. New range consistently remains insignificant and delivery time and staff satisfaction remain important factors. SES category shows an improve in it's importance when considered with all factors.
+
+```{r, message=FALSE, warning=FALSE}
+
+lm_Staff_Delivery <- lm(customer.satisfaction ~ staff.satisfaction + delivery.time, data = raw_cs.data)
+summary(lm_Staff_Delivery)
+
+#Since we got a common trend of both staff satisfaction and delivery time being significant, we create a model using these two factors and get common results. With a R square value of 0.25 explaining the variance in the data we get a decent model. These findings are statistically significant and provide a strong indication that improving staff satisfaction and reducing delivery time could enhance customer satisfaction.
+
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+anova_results <- anova(lm_Staff_Delivery, lm_all_factors_raw_cs_data)
+
+
+print(anova_results)
+```
+
+Based on the ANOVA results, the Model 2 - consisting of all factors provides better results and fits the data well compared to the other model.The lower p-value (2.2e-16) suggests the model with all factors considered is significant and all factors are significant.
+
+```{r, message=FALSE, warning=FALSE}
+
+raw_cs.data$predicted_all_factors <- predict(lm_all_factors_raw_cs_data, raw_cs.data)
+
+
+plot_all_factors <- ggplot(raw_cs.data, aes(x = staff.satisfaction, y = customer.satisfaction, colour = delivery.time)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", aes(x = staff.satisfaction, y = predicted_all_factors), colour = "red", linetype = "dashed", se = FALSE) +
+  scale_colour_gradient2(low = "#E07A5F", mid = "#F1D4B8", high = "#81B29A", midpoint = median(raw_cs.data$delivery.time)) +
+  theme_minimal() +
+  labs(title = "Fig 30. Full Model: Impact of Staff Satisfaction and Delivery Time",
+       subtitle = "Customer Satisfaction vs Staff Satisfaction",
+       x = "Staff Satisfaction",
+       y = "Customer Satisfaction") +
+  theme(legend.position = "bottom")
+
+
+grid.arrange(plot_all_factors,ncol = 1)
+
+#Based on the visual, we can confirm the model fits the data well. However, at lower and higher levels there seems to be some variance.
+
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+
+vif_values_cs <- vif(lm_all_factors_raw_cs_data)
+
+
+print(vif_values_cs)
+
+confint(lm_all_factors_raw_cs_data)
+
+```
+
+When confirmed with Variance Inflation Factor (VIF), the values are less hence suggesting we can ingore the issue of multicollinearity.
+
+1) Staff Satisfaction: When other factors are controlled, the Staff Satisfaction factor affects customer satisfaction between 0.19 and 0.51 values indicating a significant positive relation.
+
+2) Delivery Time: When other factors are controlled, the Delivery Time factor affects customer satisfaction between -0.02 and -0.007 values indicating a significant negative relation.
+
+3) New Range (True): When other factors are controlled, the range when true factor affects customer satisfaction between -0.12 and 0.31 values indicating an insignificant relation since 0 comes between the interval.
+
+4) SES_category (Low): When other factors are controlled, the SES_category when low factor affects customer satisfaction between -0.52 and 0.02 values indicating an insignificant relation since 0 comes between the interval.
+
+5) SES_category (Medium): When other factors are controlled, the SES_category when medium factor affects customer satisfaction between 0.91 and 1.50 values indicating a significant positive relation.
+
+## Conclusion
+
+As seen in the graphs, the Model 2 - consisting of all factors provides better results and fits the data well compared to the other model.The lower p-value (2.2e-16) suggests the model with all factors considered is significant and all factors are significant. Supported by the absence of multicollinearity and by confidence intervals, we conclude the model (customer.satisfaction ~ staff.satisfaction + delivery.time + new_range + SES_category) to be the best fit.
+
+# Question 2 - Effect of delivery times upon customer satisfaction across Socio-Economic-Status
+
+
+```{r, message=FALSE, warning=FALSE}
+
+# Since we have already carried out steps of Data Loading, Data Understanding, Data Transformations, we will directly skip to the modelling of delivery times upon customer satisfaction across Socio-Economic-Status.
+
+# Linear model considering the interaction between SES category and delivery time on customer satisfaction
+lm_DeliveryTime_SESInteraction <- lm(customer.satisfaction ~ delivery.time * SES_category, data = raw_cs.data)
+summary(lm_DeliveryTime_SESInteraction)
+
+
+#The model predicts that for 1 unit increase in delivery time, the customer satisfaction decreases by 0.035 units. With a very small value of P, we can confirm this relation is statistically significant.
+
+#The model predicts that for customers in Low SES_category, the customer satisfaction decreases by 2.15 units. With a small value of P, we can confirm this relation is statistically significant. However, for customers in Medium SES_category, the customer satisfaction increases by 0.26 units however the relation is not significant.
+
+#The model predicts that when the interaction term of delivery time and SES_category of Low, the customer satisfaction increases by 0.03 units with a statistically significant relation. On the other hand, model predicts that when the interaction term of delivery time and SES_category of Medium, the customer satisfaction increases by 0.02 units with a statistically insignificant relation.
+#With a very good R square value of 0.40, it suggests the model is not over fit and explains the variance in the data well.
+
+#With significant relations for delivery time, it still remains a very important factor for customer satisfaction.
+#The high value of SES_categoryLow suggests greater dissatisfaction among these customers in general as compared to other groups.
+#The comparatively higher value for delivery.time:SES_categoryLow, suggests that people of this low category are still okay with delivery being late as compared to the Medium category.
+
+```
+
+
+
+```{r, message=FALSE, warning=FALSE}
+
+ggplot(raw_cs.data, aes(x = delivery.time, y = customer.satisfaction, colour = SES_category)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", aes(colour = SES_category), se = FALSE) +
+  scale_colour_manual(values = c("Low" = "#E07A5F", "Medium" = "#81B29A", "High" = "#F1D4B8")) +
+  theme_minimal() +
+  labs(title = "Fig 31. Interaction between Delivery Time and SES Category on Customer Satisfaction",
+       x = "Delivery Time",
+       y = "Customer Satisfaction") +
+  theme(legend.title = element_blank())
+
+```
+
+As seen in the visual, the overall trend is negative implying that the customer dissatisfaction increases with increase in delivery time.
+With the highest slope fall for High Category, this group seems to be the most impatient and ruthless and get very dissatisfied with increase in delivery time.
+Following the High Category, the Medium category seems to be comparatively less impatient, although the slope is still significant.
+The Low Category seems to be the most patient and understanding and show nominal change in customer satisfaction with increase in delivery time.
+
+At lower levels of delivery time, Medium Category are satisfied the most, followed by High Category and then Low Category.
+
+Hence, for quick deliveries, Medium Category get most satisfied and for delayed deliveries, Low Category customers get least dissatisfied.
+
+```{r, message=FALSE, warning=FALSE}
+
+vif_values_cs_ <- vif(lm_DeliveryTime_SESInteraction)
+
+
+print(vif_values_cs_)
+
+confint(lm_DeliveryTime_SESInteraction)
+
+```
+
+The Variance Inflation Factors (VIF) score for delivery time is less and acceptable. However very high for SES_category, although this generally happens for categorical variables.
+
+
+1) Delivery Time: When other factors are controlled, the Delivery Time factor affects customer satisfaction between -0.05 and -0.01 values indicating a significant negative relation.
+
+2) SES_category (Low): When other factors are controlled, the SES_category when low factor affects customer satisfaction between -3.68 and -0.62 values indicating a significant relation.
+
+3) SES_category (Medium): When other factors are controlled, the SES_category when medium factor affects customer satisfaction between -1.24 and 1.76 values indicating an insignificant relation.
+
+4) Delivery Time:SES_category (Low): When other factors are controlled, the Delivery Time:SES_category (Low) factor affects the customer satisfaction between 0.005 and 0.055 indicating a significant positive relation.
+
+5) Delivery Time:SES_category (Medium): When other factors are controlled, the Delivery Time:SES_category (Medium) factor affects the customer satisfaction between -0.005 and 0.04 indicating an insignificant relation.
+
+
+# References
+
+1) Newman, D.A., 2014. Missing data: Five practical guidelines. Organizational Research Methods, 17(4), pp.372-411.
+ScienceDirect, 2023. Missing data considerations in statistical analysis. Available at: https://www.sciencedirect.com/science/article/pii/S1326020023036488 [Accessed 19 January 2025].
+
+2) Kaur, P., Stoltzfus, J. and Yellapu, V., 2018. Descriptive statistics. International Journal of Academic Medicine, 4(1), pp.60-63. Available at: https://doi.org/10.4103/IJAM.IJAM_7_18 [Accessed 19 January 2025].
